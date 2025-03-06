@@ -1,5 +1,5 @@
 ---
-title: "Econ 424 Project Template"
+title: "Econ 424 Project Group 7"
 output:
   html_document:
     df_print: paged
