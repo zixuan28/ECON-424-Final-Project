@@ -54,7 +54,7 @@ Data for the project are downloaded automatically from Yahoo! and consist of clo
 last.date = as.Date("2023-12-31")
 # last.date = Sys.Date()
 first.date = last.date - years(10)
-project.symbols = c("VTI","VTEB","VEA","VWO","VIG")
+project.symbols = c("EWS","EWY","EWT","EWH")
 project.prices <- 
   getSymbols(project.symbols, src = 'yahoo', 
              from = as.character(first.date), 
