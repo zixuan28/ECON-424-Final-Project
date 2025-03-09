@@ -10,6 +10,7 @@ output:
 ```{r, echo = FALSE}
 options(digits=3, width=70)
 # load packages
+suppressPackageStartupMessages(library(reshape2))
 suppressPackageStartupMessages(library(IntroCompFinR))
 suppressPackageStartupMessages(library(PerformanceAnalytics))
 suppressPackageStartupMessages(library(quantmod))
