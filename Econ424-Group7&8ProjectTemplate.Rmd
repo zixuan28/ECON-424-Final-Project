@@ -118,15 +118,83 @@ grid.arrange(
 ## Sample Statistics
 
 **Create four panel diagnostic plots containing histograms, boxplots, qq-plots, and SACFs for each return series and comment. Do the returns look normally distributed? Are there significant outliers in the data? Is there any evidence of linear time dependence?**
+```{r}
+projectReturns <- na.omit(diff(log(projectPrices)))
+# Function to create a four-panel diagnostic plot
+fourPanelPlot <- function(return_series, title) {
+  par(mfrow = c(2, 2))  # 2x2 layout for four plots
+  
+  # Histogram with normal density curve
+  hist(return_series, probability = TRUE, col = "lightblue", main = paste(title, "Monthly Returns"), xlab = title)
+  lines(density(return_series, na.rm = TRUE), col = "black", lwd = 2)
+  
+  # Boxplot
+  boxplot(return_series, horizontal = TRUE, col = "lightblue", main = "Boxplot")
+  
+  # Normal Q-Q Plot
+  qqnorm(return_series, main = "Normal Q-Q Plot", col = "blue")
+  qqline(return_series, col = "black", lwd = 2)
+  
+  # ACF Plot
+  acf(return_series, main = "ACF", col = "black")
+}
+fourPanelPlot(projectReturns[, "EWS"], "EWS")
+fourPanelPlot(projectReturns[, "EWY"], "EWY")
+fourPanelPlot(projectReturns[, "EWT"], "EWT")
+fourPanelPlot(projectReturns[, "EWH"], "EWH")
+```
+Interpretation:
+"The histograms and normal Q-Q plots suggest that the returns are approximately normal but with slight deviations. EWS, EWY, EWT, and EWH all exhibit fat tails, meaning extreme values occur more frequently than expected under a normal distribution. The Q-Q plots show noticeable deviations at the tails, reinforcing the presence of heavy tails and confirming non-normality. The distributions appear roughly symmetric with no significant skewness.
 
+Boxplots indicate a few outliers in each series, particularly in EWS and EWT. These outliers are present on both ends of the distribution, suggesting occasional extreme positive and negative returns. However, their frequency is not excessive, indicating that while the data contains some anomalies, it remains relatively well-behaved.
+
+The autocorrelation function (ACF) plots for all four return series reveal that only the first lag exhibits a small, significant autocorrelation. Beyond the first lag, the autocorrelations fall within the blue confidence bands, meaning there is no strong evidence of persistent time dependence. This suggests that returns are largely independent over time, aligning with the efficient market hypothesis.
+
+Overall, the returns do not strictly follow a normal distribution but are roughly symmetric with fat tails. While some outliers exist, they are not extreme enough to cause major concerns. The lack of significant autocorrelation beyond the first lag indicates no strong linear dependence, suggesting that past returns do not strongly predict future returns."
 
 **Create a plot showing the distributions of all of the assets in one graph.**
+```{r}
+install.packages("reshape2")
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(reshape2))
+# Convert return data to long format for ggplot
+returns_long <- melt(as.data.frame(projectReturns))
 
+# Create density plot with all assets in one graph
+ggplot(returns_long, aes(x = value, color = variable, fill = variable)) + 
+  geom_density(alpha = 0.3) + 
+  ggtitle("Return Distributions of All Assets") +
+  xlab("Log Returns") + 
+  ylab("Density") +
+  theme_minimal()
+```
 
 # Sample Statistics
 
 **Compute univariate descriptive statistics (mean, variance, standard deviation, skewness, kurtosis, quantiles) for each return series and comment.**
-  
+```{r}
+# Compute descriptive statistics
+muhat.vals = colMeans(projectReturns, na.rm = TRUE)
+var.vals = apply(projectReturns, 2, var, na.rm = TRUE)
+sd.vals = apply(projectReturns, 2, sd, na.rm = TRUE)
+skew.vals = apply(projectReturns, 2, skewness, na.rm = TRUE)
+ekurt.vals = apply(projectReturns, 2, kurtosis, na.rm = TRUE)
+
+# Combine statistics into a matrix
+stats.mat = rbind(muhat.vals, var.vals, sd.vals, skew.vals, ekurt.vals)
+
+# Assign row names
+rownames(stats.mat) = c("Mean", "Variance", "Std Dev", "Skewness", "Excess Kurtosis")
+
+# Print the statistics table
+stats.mat
+
+# Compute quantiles for each asset
+quantiles.vals = apply(projectReturns, 2, quantile, probs = c(0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99), na.rm = TRUE)
+
+# Print quantile statistics
+quantiles.vals
+```
 
 # empirical quantiles for VaR calculations
 
