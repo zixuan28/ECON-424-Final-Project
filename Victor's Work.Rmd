@@ -1,0 +1,811 @@
+---
+title: "Econ 424 Project Group 7"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r, echo = FALSE}
+options(digits=3, width=70)
+# load packages
+suppressPackageStartupMessages(library(reshape2))
+suppressPackageStartupMessages(library(IntroCompFinR))
+suppressPackageStartupMessages(library(PerformanceAnalytics))
+suppressPackageStartupMessages(library(quantmod))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(corrplot))
+suppressPackageStartupMessages(library(xtable))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(gridExtra))
+
+resetPar = par()
+```
+
+
+# Data
+
+Choose 4-6 assets that represent e.g. the overall equity market behavior for different countries or regions of the world or some other grouping of indexes. Below are some examples
+* S&P/ASX 200 is a commonly used stock market index for Australia.  
+* Commodity indices:www.spglobal.com/spdji/en/indices/commodities/sp-gsci/#data
+* Real estate indexes and others by MSCI: https://www.msci.com/our-solutions/indexes/real-estate-indexes
+* Vanguard index funds: https://investor.vanguard.com/investment-products/list/all?managementstyle=index
+* https://www.schwab.com/etfs/types/currency-etfs
+
+Exactly which set of assets you pick is up to your group, but please motivate your choice.  You may also want to explore ETFs vs. Mutual Funds.  Indices are more diversified so tend to be easier to work with than individual stocks.
+
+The template uses the following 5 assets over 10 years: Change the symbols to your own choices, and expand the time period to what makes sense to you (again, motivate/explain your choice.)
+
+1. US Stocks. Vanguard Total Stock Market ETF (VTI)
+2. Municipal Bonds. Vanguard Tax-Exempt Bond Index ETF (VTEB)
+3. Foreign Developed Stocks. Vanguard FTSE Developed Markets ETF (VEA)
+4. Emerging market stocks. Vanguard FTSE Emerging Markets ETF (VWO)
+5. Dividend Growth Stocks. Vanguard Dividend Appreciation ETF (VIG)
+(a possible one: Goldman Sachs Physical Gold ETF (AAAU)
+
+Information on these funds is available on the [Yahoo! finance site](http://finance.yahoo.com/) After typing in the sticker symbol and retrieving the quote data, choose Profile to get a summary of the fund. Please review each fund before doing any of the analysis below.
+
+Data for the project are downloaded automatically from Yahoo! and consist of closing price data on 5 Vanguard ETFs:
+
+```{r, echo=FALSE}
+# retrieve data for questions
+last.date = as.Date("2023-12-31")
+# last.date = Sys.Date()
+first.date = last.date - years(10)
+project.symbols = c("EWS","EWY","EWT","EWH")
+project.prices <- 
+  getSymbols(project.symbols, src = 'yahoo', 
+             from = as.character(first.date), 
+             to = as.character(last.date),
+             auto.assign = TRUE, 
+             warnings = FALSE) %>% 
+  map(~Ad(get(.))) %>% 
+  reduce(merge) %>%
+  `colnames<-`(project.symbols)
+projectPrices = to.monthly(project.prices, OHLC=FALSE)  # Group 7 you should continue to use daily data and skip this
+```
+
+```{r, echo=FALSE}
+# calculate simple returns
+projectReturns = na.omit(Return.calculate(projectPrices, method = "discrete"))
+ret.mat = coredata(projectReturns)
+```
+
+
+# Organization of Results
+
+As in the homework assignments, summarize your R work in an R Markdown file.
+
+# Presentation Focus
+
+Please provide a formal write-up of the project questions for your presentation (see end of file). Your presentation should consist of:
+
+1. An executive summary, which gives a brief summary of the main results and key insights using bullet points
+
+2. Sections that summarize the results of your statistical analysis by topic (see below) - given the time constraint, you want to focus on patterns that illustrate the key messages mentioned in the summary.  Do not present EVERYTHING; it will make a very boring presentation: focus on 3-5 main messages.
+
+Submit the full writeup with R-output, and present only selected parts of it for your presentation.  
+
+# Analysis of Questions  
+
+Here, you will create R code to do the analysis for the project. Note that should adjust numbers according to your data and sample period, including the risk free rate, targeted returns..etc.
+
+## Prices and Returns
+
+**For each ETF or assets, compute time plots of monthly prices and simple returns and comment. (e.g Are there any unusually large or small returns? Can you identify any news events that may explain these unusual values?  are they stationary?) **
+
+```{r, echo = FALSE}
+# plot(projectPrices, multi.panel=TRUE, 
+#      yaxis.same=FALSE, main="Monthly Prices on 5 Vanguard ETFs", lwd=2, col="blue")
+grid.arrange(
+  autoplot(projectPrices[, "VTI"]),
+  autoplot(projectPrices[, "VTEB"]),
+  autoplot(projectPrices[, "VEA"]),
+  autoplot(projectPrices[, "VWO"]),
+  autoplot(projectPrices[, "VIG"]),
+  nrow=3
+)
+```
+
+
+
+**Q: Give a plot showing the growth of $1 in each of the funds over the five year period (recall, this is called an "equity curve"). Which fund gives the highest future value? Are you surprised?**
+
+
+## Sample Statistics
+
+**Create four panel diagnostic plots containing histograms, boxplots, qq-plots, and SACFs for each return series and comment. Do the returns look normally distributed? Are there significant outliers in the data? Is there any evidence of linear time dependence?**
+```{r}
+projectReturns <- na.omit(diff(log(projectPrices)))
+# Function to create a four-panel diagnostic plot
+fourPanelPlot <- function(return_series, title) {
+  par(mfrow = c(2, 2))  # 2x2 layout for four plots
+  
+  # Histogram with normal density curve
+  hist(return_series, probability = TRUE, col = "lightblue", main = paste(title, "Monthly Returns"), xlab = title)
+  lines(density(return_series, na.rm = TRUE), col = "black", lwd = 2)
+  
+  # Boxplot
+  boxplot(return_series, horizontal = TRUE, col = "lightblue", main = "Boxplot")
+  
+  # Normal Q-Q Plot
+  qqnorm(return_series, main = "Normal Q-Q Plot", col = "blue")
+  qqline(return_series, col = "black", lwd = 2)
+  
+  # ACF Plot
+  acf(return_series, main = "ACF", col = "black")
+}
+fourPanelPlot(projectReturns[, "EWS"], "EWS")
+fourPanelPlot(projectReturns[, "EWY"], "EWY")
+fourPanelPlot(projectReturns[, "EWT"], "EWT")
+fourPanelPlot(projectReturns[, "EWH"], "EWH")
+```
+Interpretation:
+"The histograms and normal Q-Q plots suggest that the returns are approximately normal but with slight deviations. EWS, EWY, EWT, and EWH all exhibit fat tails, meaning extreme values occur more frequently than expected under a normal distribution. The Q-Q plots show noticeable deviations at the tails, reinforcing the presence of heavy tails and confirming non-normality. The distributions appear roughly symmetric with no significant skewness.
+
+Boxplots indicate a few outliers in each series, particularly in EWS and EWT. These outliers are present on both ends of the distribution, suggesting occasional extreme positive and negative returns. However, their frequency is not excessive, indicating that while the data contains some anomalies, it remains relatively well-behaved.
+
+The autocorrelation function (ACF) plots for all four return series reveal that only the first lag exhibits a small, significant autocorrelation. Beyond the first lag, the autocorrelations fall within the blue confidence bands, meaning there is no strong evidence of persistent time dependence. This suggests that returns are largely independent over time, aligning with the efficient market hypothesis.
+
+Overall, the returns do not strictly follow a normal distribution but are roughly symmetric with fat tails. While some outliers exist, they are not extreme enough to cause major concerns. The lack of significant autocorrelation beyond the first lag indicates no strong linear dependence, suggesting that past returns do not strongly predict future returns."
+
+**Create a plot showing the distributions of all of the assets in one graph.**
+```{r}
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(reshape2))
+# Convert return data to long format for ggplot
+returns_long <- melt(as.data.frame(projectReturns))
+
+# Create density plot with all assets in one graph
+ggplot(returns_long, aes(x = value, color = variable, fill = variable)) + 
+  geom_density(alpha = 0.3) + 
+  ggtitle("Return Distributions of All Assets") +
+  xlab("Log Returns") + 
+  ylab("Density") +
+  theme_minimal()
+```
+
+# Sample Statistics
+
+**Compute univariate descriptive statistics (mean, variance, standard deviation, skewness, kurtosis, quantiles) for each return series and comment.**
+```{r}
+# Compute descriptive statistics
+muhat.vals = colMeans(projectReturns, na.rm = TRUE)
+var.vals = apply(projectReturns, 2, var, na.rm = TRUE)
+sd.vals = apply(projectReturns, 2, sd, na.rm = TRUE)
+skew.vals = apply(projectReturns, 2, skewness, na.rm = TRUE)
+ekurt.vals = apply(projectReturns, 2, kurtosis, na.rm = TRUE)
+
+# Combine statistics into a matrix
+stats.mat = rbind(muhat.vals, var.vals, sd.vals, skew.vals, ekurt.vals)
+
+# Assign row names
+rownames(stats.mat) = c("Mean", "Variance", "Std Dev", "Skewness", "Excess Kurtosis")
+
+# Print the statistics table
+stats.mat
+
+# Compute quantiles for each asset
+quantiles.vals = apply(projectReturns, 2, quantile, probs = c(0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99), na.rm = TRUE)
+
+# Print quantile statistics
+quantiles.vals
+```
+
+# empirical quantiles for VaR calculations
+
+
+# display results in a table
+stats.mat = rbind(muhat.vals, 
+                  sd.vals,
+                  skew.vals,
+                  ekurt.vals,
+                  q.vals)
+rownames(stats.mat) = c("Mean", "Std Dev", "Skewness", 
+                        "Excess Kurtosis", "1% Quantile", 
+                        "5% Quantile")
+kable(stats.mat)
+
+
+**Q: Which countries or assets have the highest and lowest average return? Which funds have the highest and lowest standard deviation? How about their skewness and excess kurtosis?  For which assets is the assumption of normal distribution the most appropriate?** 
+
+
+**Make an x-y plot with the standard deviations on the x-axis and the means on the y-axis. Comment on the risk-return relationship you see.**
+
+
+**Compute estimated standard errors and form $95\%$ confidence intervals for the the estimates of the mean and standard deviation. Arrange these values nicely in a table. Are these means and standard deviations estimated very precisely? Which estimates are more precise: the estimated means or standard deviations? for which assets?**
+
+
+**Using a monthly risk free rate equal to e.g.0.0004167 per month (which corresponds to a continuously compounded annual rate of 0.5%), compute Sharpe's slope/ratio for each asset. Use the bootstrap to calculate estimated standard errors for the Sharpe ratios. Arrange these values nicely in a table.  Note: here you should look at what a sensible monthly risk-free rate is for the choice of your sample period, e.g. https://www.macrotrends.net/2518/1-month-libor-rate-historical-chart**
+
+
+**Q: Which country/region (asset) has the highest Sharpe slope?**
+
+
+Next, we use the bootstrap to compute estimated SEs for the Sharpe ratios. First, we create a function to compute the Sharpe ratios to be passed to the `boot()` function and then we create another function to pull out the boostrap SEs and 95% confidence intervals. We run these functions and put the results in the following table:
+
+```{r, echo=FALSE}
+sharpeRatio.boot = function(x, idx, risk.free) {
+  muhat = mean(x[idx])
+  sigmahat = sd(x[idx])
+  sharpeRatio = (muhat - risk.free)/sigmahat
+  sharpeRatio
+}
+computeSEconfintSharpe = function(x, risk.free) {
+  Sharpe.boot = boot(x, statistic=sharpeRatio.boot, R=999, risk.free=risk.free)
+  Sharpe.hat = Sharpe.boot$t0
+  SE.Sharpe = sd(Sharpe.boot$t)
+  CI.Sharpe = boot.ci(Sharpe.boot, conf = 0.95, type="norm")$normal
+  CI.Sharpe = CI.Sharpe[-1]
+  ans = c(Sharpe.hat, SE.Sharpe, CI.Sharpe)
+  names(ans) = c("Sharpe", "SE", "LCL (0.95)", "UCL (0.95)")
+  return(ans)
+}
+set.seed(123)
+Sharpe.boot.VTI = computeSEconfintSharpe(ret.mat[, "VTI", drop=FALSE], risk.free=rf)
+Sharpe.boot.VTEB = computeSEconfintSharpe(ret.mat[, "VTEB", drop=FALSE], risk.free=rf)
+Sharpe.boot.VEA = computeSEconfintSharpe(ret.mat[, "VEA", drop=FALSE], risk.free=rf)
+Sharpe.boot.VWO = computeSEconfintSharpe(ret.mat[, "VWO", drop=FALSE], risk.free=rf)
+Sharpe.boot.VIG = computeSEconfintSharpe(ret.mat[, "VIG", drop=FALSE], risk.free=rf)
+
+Sharpe.mat = rbind(Sharpe.boot.VTI,
+                Sharpe.boot.VTEB,
+                Sharpe.boot.VEA,
+                Sharpe.boot.VWO,
+                Sharpe.boot.VIG)
+rownames(Sharpe.mat) = colnames(projectReturns)
+kable(Sharpe.mat)
+```
+
+**Q: Are the Sharpe slopes estimated precisely?**
+
+
+** Convert the monthly sample means into annual estimates by multiplying by 12 and convert the monthly sample SDs into annual estimates by multiplying by the square root of 12. Comment on the values of these annual numbers. Using these values, compute annualized Sharpe ratios. Are the asset rankings the same as with the monthly Sharpe ratios?**
+
+
+** Assuming you get the average annual return every year for 10 years, how much would $1 grow to after 5 years? (Remember, the annual return you compute is a cc annual return).**
+
+
+** Compute and plot all pair-wise scatterplots between your assets. Briefly comment on any relationships you see.**
+
+
+**Compute the sample covariance matrix of the returns on your assets and comment on the direction of linear association between the asset returns.**
+
+
+**Compute the sample correlation matrix of the returns on your assets and plot this correlation matrix using the R corrplot package function `corrplot.mixed()`. Which assets are most highly correlated?  Which are least correlated? Based on the estimated correlation values do you think diversification will reduce risk with these assets?**
+
+
+## Value-at-Risk Calculations
+
+**Assume that you have $100,000 to invest starting at Dec 31, 2023.  For each asset, determine the 1\% and 5\% normal value-at-risk of the $100,000 investment over a one month investment horizon based on the normal distribution using the estimated means and variances of your assets.  Which assets have the highest and lowest VaR values?**
+
+**Use the bootstrap to compute estimated standard errors and 95% confidence intervals for your 1\% and 5\% VaR estimates. Create a table showing the 1\% and 5\% VaR estimates along with the bootstrap standard errors and 95% confidence intervals (code provided).  Looking at these results, comment on the precision of your VaR estimates (which assets are riskier..etc.) **
+
+
+Here, we write functions to compute VaR and extract bootstrap SEs and 95\% CIs, and we use these functions to compute the $5\%$ and $1\%$ normal VaR estimates and their boostrap SEs and 95\% CIs. The following tables summarizes the results:
+
+```{r, echo=FALSE}
+Value.at.Risk = function(x, p=0.05, w=100000, 
+                         method=c("normal", "empirical"),
+                         return.type=c("cc", "simple")) {
+	method=method[1]
+  return.type=return.type[1]
+  x = as.matrix(x)
+  if (method == "normal") {
+	  q = apply(x, 2, mean) + apply(x, 2, sd)*qnorm(p)
+  } else {    
+    q = apply(x, 2, quantile, p)
+  }
+  if (return.type == "simple") {
+    VaR = q*w
+  } else {
+	  VaR = (exp(q) - 1)*w
+  }
+	return(VaR)
+}
+
+ValueAtRisk.boot = function(x, idx, p=0.05, w=100000,
+                            method=c("normal", "empirical"),
+                            return.type=c("cc", "simple")) {
+  method = method[1]
+  return.type = return.type[1]
+  if (method == "normal") {
+	  q = mean(x[idx]) + sd(x[idx])*qnorm(p)
+  } else {
+    q = quantile(x[idx], p)
+  }
+  if (return.type == "cc") {
+	  VaR = (exp(q) - 1)*w
+  } else {
+    VaR = q*w
+  }
+	VaR
+}
+computeSEconfintVaR = function(x, p=0.05, w=100000,
+                               method=c("normal", "empirical"),
+                               return.type=c("cc", "simple")) {
+  VaR.boot = boot(x, statistic=ValueAtRisk.boot, p=p, R=999)
+  VaR.hat = VaR.boot$t0
+  SE.VaR = sd(VaR.boot$t)
+  CI.VaR = boot.ci(VaR.boot, conf = 0.95, type="norm")$normal
+  CI.VaR = CI.VaR[-1]
+  ans = c(VaR.hat, SE.VaR, CI.VaR)
+  names(ans) = c("VaR.05", "SE", "LCL (0.95)", "UCL (0.95)")
+  return(ans)
+}
+set.seed(123)
+VaR.boot.VTI = computeSEconfintVaR(ret.mat[, "VTI", drop=FALSE])
+VaR.boot.VTEB = computeSEconfintVaR(ret.mat[, "VTEB", drop=FALSE])
+VaR.boot.VEA = computeSEconfintVaR(ret.mat[, "VEA", drop=FALSE])
+VaR.boot.VWO = computeSEconfintVaR(ret.mat[, "VWO", drop=FALSE])
+VaR.boot.VIG = computeSEconfintVaR(ret.mat[, "VIG", drop=FALSE])
+
+VaR.mat = rbind(VaR.boot.VTI,
+                VaR.boot.VTEB,
+                VaR.boot.VEA,
+                VaR.boot.VWO,
+                VaR.boot.VIG)
+                
+rownames(VaR.mat) = colnames(projectReturns)
+kable(VaR.mat)
+```
+
+
+```{r, echo=FALSE}
+set.seed(123)
+VaR.boot.VTI.01 = computeSEconfintVaR(ret.mat[, "VTI", drop=FALSE], p=0.01)
+VaR.boot.VTEB.01 = computeSEconfintVaR(ret.mat[, "VTEB", drop=FALSE], p=0.01)
+VaR.boot.VEA.01 = computeSEconfintVaR(ret.mat[, "VEA", drop=FALSE], p=0.01)
+VaR.boot.VWO.01 = computeSEconfintVaR(ret.mat[, "VWO", drop=FALSE], p=0.01)
+VaR.boot.VIG.01 = computeSEconfintVaR(ret.mat[, "VIG", drop=FALSE], p=0.01)
+
+VaR.mat.01 = rbind(VaR.boot.VTI.01,
+                VaR.boot.VTEB.01,
+                VaR.boot.VEA.01,
+                VaR.boot.VWO.01,
+                VaR.boot.VIG.01)
+                
+rownames(VaR.mat.01) = colnames(projectReturns)
+colnames(VaR.mat.01)[1] = "VaR.01"
+kable(VaR.mat.01)
+```
+
+
+* SAMPLE SUMMARY: VWO has the highest 5\% normal VaR values at -\$8,180 and VETB has the lowest at -\$2,414. The bootstrap SE values are fairly small (about 6-7 times smaller than the VaR values) and the confidence intervals are not too wide...etc.
+
+* The rankings are the same for the 1\% VaR values: VWO has the highest VaR at -\$11,429, and VTEB has the lowest at -\$3,468. The bootstrap standard errors are about 8-9 times smaller than the VaR estimate2.
+
+
+**Repeat the VaR analysis (but skip the bootstrapping and the annualized VaR calculation), but this time use the empirical 1% and 5% quantiles of the return distributions (which do not assume a normal distribution - this method is often called historical simulation). How different are the results from those based on the normal distribution?**
+
+** codes are provided but please explain how the two differ computationally in your presentation. **
+
+
+```{r, echo=FALSE}
+VaR.normal.05 = Value.at.Risk(ret.mat, p=0.05, 
+                              method="normal",
+                              return.type="cc")
+VaR.normal.01 = Value.at.Risk(ret.mat, p=0.01)
+VaR.empirical.05 = Value.at.Risk(ret.mat, p=0.05, 
+                                 method="empirical",
+                                 return.type="cc")
+VaR.empirical.01 = Value.at.Risk(ret.mat, p=0.01, 
+                                 method="empirical",
+                                 return.type="cc")
+VaR.mat = cbind(VaR.normal.05, VaR.empirical.05, VaR.normal.01, VaR.empirical.01)
+colnames(VaR.mat) = c("Normal VaR.05", "Empirical VaR.05", "Normal VaR.01", "Empirical VaR.01")
+kable(VaR.mat)
+```
+
+* The normal and empirical VaR values are close? not close?  
+
+## Rolling Sample Statistics
+
+**Compute and plot the 24-month rolling estimates of the mean and volatility for each of the 5 ETFs. Plot the rolling means, volatilities and returns on the same graph for each asset. Does the assumption of covariance stationarity look reasonable for your data? (code provided)  describe what you observe.  Does COVID show up in the data?**
+
+The 24-month rolling means are shown below:
+
+```{r, echo=FALSE}
+roll.muhat = rollapply(projectReturns, width=24, by=1, 
+                       by.column=TRUE, FUN=mean, 
+                       align="right")
+plot(na.omit(roll.muhat), main="24-month rolling estimates of mean", multi.panel=FALSE, lwd=2,
+col=c("black", "red", "green", "blue", "purple"), lty=c("solid", "solid", "solid", "solid", "solid"),
+major.ticks="years", grid.ticks.on="years", legend.loc = "topright")
+```
+
+
+The rolling volatilities are:
+
+```{r, echo=FALSE}
+roll.sigmahat = rollapply(projectReturns, width=24, by=1, 
+                          by.column=TRUE, FUN=sd, 
+                          align="right")
+plot(na.omit(roll.sigmahat), main="24-month rolling estimates of volatility", multi.panel=FALSE, lwd=2,
+col=c("black", "red", "green", "blue", "purple"), lty=c("solid", "solid", "solid", "solid", "solid"),
+major.ticks="years", grid.ticks.on="years", legend.loc = "bottomleft")
+```
+
+
+## Portfolio Theory
+
+Use all 4 assets and the GWN model estimates computed from the full sample for the following computations. You may find it useful to create a table which summarizes the results from the portfolio calculations for easy reference.
+
+**Using the IntroCompFinR function getPortfolio(), create an equally weighted portfolio of the 4 ETFs and compute the expected return and standard deviation (volatility) of this portfolio**
+
+```{r}
+#Create covariance matrix
+cov.mat = cov(projectReturns)
+
+#Create equal weighted portfolio
+eqw_port = getPortfolio(muhat.vals, cov.mat, c(0.25, 0.25, 0.25, 0.25))
+eqw_port
+```
+
+**Annualize the the monthly mean and SD by multiplying the mean by 12 and the SD by the square root of 12. Compute the annual Sharpe ratio from these values. Briefly comment on these values relative to those for each asset.**
+
+```{r}
+#Compute annual mean and sd for each asset for comparison
+muhat.vals_yr = muhat.vals * 12
+sd.vals_yr = sd.vals * sqrt(12)
+musd_yr = rbind(muhat.vals_yr, sd.vals_yr)
+rownames(musd_yr) = c("annual expected mean", "annual std dev")
+musd_yr
+
+#Comoute annual mean and sd from equal weight portfolio
+mu_eqw_yr = eqw_port[2]$er * 12
+sd_eqw_yr = eqw_port[3]$sd * sqrt(12)
+
+#Set up annual risk free rate
+rf_annual = 2 / 100
+
+#Compute annual SR
+SR_eqw_yr = (mu_eqw_yr - rf_annual) / (sd_eqw_yr)
+
+cat("The annual sharpe ratio of equal weighted portfolio is", SR_eqw_yr)
+```
+
+Comparing the annual expect return from the equal weight portfolio to those from the assets, EWS has a expected annual return three times of that of equal weight portfolio with a expected annual standard deviation over three times higher than that of the portfolio. EWY has an annual expected return almost ten times higher than that of the portfolio with an annual standard deviation roughly four times of that of the portfolio. EWT has an annual expected return over four times higher than that of the portfolio with an annual standard deviation over three times than that of portfolio. Lastly, EWH has an annual expected return roughly seven times higher than that of portfolio with an annual standard deviation almost four times higher than that of portfolio.
+
+Overall, we noticed that the portfolio give us a low risk, low return combination option.
+
+**Compute the global minimum variance portfolio and calculate the expected return and SD of this portfolio. Are there any negative weights in the global minimum variance portfolio?**
+
+```{r}
+#Calculate global min portfolio with monthly parameters
+gm_port = globalMin.portfolio(muhat.vals, cov.mat)
+gm_port
+```
+
+The global minimum variance portfolio puts negative weight on EWY.
+
+**Annualize the the monthly mean and SD by multiplying the mean by 12 and the SD by the square root of 12. Compute the annual Sharpe ratio from these values. Briefly comment on these values relative to those for each asset.**
+
+```{r}
+#Comoute annual mean and sd from global min portfolio
+mu_gm_yr = gm_port[2]$er * 12
+sd_gm_yr = gm_port[3]$sd * sqrt(12)
+
+#Compute annual SR
+SR_gm_yr = (mu_gm_yr - rf_annual) / (sd_gm_yr)
+
+cat("The annual sharpe ratio of equal weighted portfolio is", SR_gm_yr)
+```
+
+Comparing the annual expect return from the global minimum variance portfolio to those from the assets, EWS has a expected annual return slightly higher thab that of global minimum vairance portfolio with a expected annual standard deviation over four times higher than that of the portfolio. EWY has an annual expected return almost five times higher than that of the portfolio with an annual standard deviation almost six times of that of the portfolio. EWT has an annual expected return over 22 times higher than that of the portfolio with an annual standard deviation almost five times than that of portfolio. Lastly, EWH has an annual expected return over three times higher than that of portfolio with an annual standard deviation almost five times higher than that of portfolio.
+
+Overall, we noticed that the portfolio give us a low risk, low return combination option.
+
+**Assume that you have $100,000 to invest starting at April 30, 2023. For the global minimum variance portfolio, determine the 1% and 5% normal value-at-risk of the $100,000 investment over a one month investment horizon.  Compare this value to the VaR values for the individual assets.**
+
+```{r}
+W = 100000
+var_one_gm = W * qnorm(p = 0.01, mean = gm_port[2]$er, sd = gm_port[3]$sd)
+var_five_gm = W * qnorm(p = 0.05, mean = gm_port[2]$er, sd = gm_port[3]$sd)
+cat("The 1% normal value-at-risk of given investment over one month is", 
+    abs(var_one_gm), "\n")
+cat("The 5% normal value-at-risk of given investment over one month is", 
+    abs(var_five_gm))
+```
+
+Will compare after all work is done by my teammates.
+
+**Using the estimated means, variances and covariances computed earlier, compute and plot the efficient portfolio frontier, allowing for short sales, for the 4 ETFs using the IntroCompFinR function `efficient.frontier()`. Create a plot (based on monthly frequency) with portfolio expected return on the vertical axis and portfolio standard deviation on the horizontal axis showing the efficient portfolios. Indicate the location of the global minimum variance portfolio (with short sales allowed) as well as the locations of your 5 assets and the equally weighted portfolio.**
+
+```{r}
+#Compute efficient portfolio frontier using monthly return data
+all_eff = efficient.frontier(muhat.vals, cov.mat)
+all_eff
+
+#plot the frontier with prevous portfolios
+plot(all_eff[3]$sd, all_eff[2]$er, type="b", ylim=c(0, 0.011), xlim=c(0.044, 0.066),
+pch=16, col="darkgreen", cex = 1, ylab=expression(mu[p]), xlab=expression(sigma[p]))
+text(median(all_eff[3]$sd-0.0027), median(all_eff[2]$er),
+labels="Efficient Frontier", pos=1, cex = 0.8, col="darkgreen")
+points(gm_port[3]$sd, gm_port[2]$er, cex=1, col="red", cex.lab=1, pch=16)
+text(gm_port[3]$sd, gm_port[2]$er,
+labels="GM with Short Sell", pos=4, cex=0.8, col="red")
+points(eqw_port[3]$sd, eqw_port[2]$er, cex=1, col="blue", cex.lab=1, pch=16)
+text(eqw_port[3]$sd, eqw_port[2]$er,
+labels="Equal Weight", pos=4, cex=0.8, col="blue")
+points(sd.vals[1], muhat.vals[1], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[2], muhat.vals[2], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[3], muhat.vals[3], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[1], muhat.vals[1], cex=1, col="black", cex.lab=1, pch=16)
+text(sd.vals[1], muhat.vals[1],
+labels="EWS", pos=4, cex=0.8, col="black")
+text(sd.vals[2], muhat.vals[2],
+labels="EWY", pos=4, cex=0.8, col="black")
+text(sd.vals[3], muhat.vals[3],
+labels="EWH", pos=4, cex=0.8, col="black")
+text(sd.vals[4], muhat.vals[4],
+labels="EWT", pos=4, cex=0.8, col="black")
+```
+
+**Find the efficient portfolio with the same mean as the equally weighted portfolio. How much smaller is the volatility of this portfolio compared to the equally weighted portfolio.**
+
+```{r}
+#Compute eff portfolio with target mean of mean from the equal weight portfolio
+eff_eqwmu = efficient.portfolio(muhat.vals, cov.mat, eqw_port[2]$er)
+eff_eqwmu
+```
+
+The standard deviation of this portfolio is 0.0027 smaller than that of the equal weight portfolio.
+
+**Find the efficient portfolio with the same volatility as the equally weighted portfolio. How much larger is the mean of this portfolio compared to the equally weighted portfolio?**
+
+```{r}
+#Compute eff portfolio with equal weight portfolio's sd
+eff_epwsd_x = eqw_port[3]$sd / eff_eqwmu[3]$sd
+eff_epwsd_x * eff_eqwmu[2]$er
+```
+
+This portfolio has a expected return 0.00016 higher than that of equal weight portfolio.
+
+**Using the IntroCompFinR function tangency.portfolio() compute the tangency portfolio using a monthly risk free rate equal to 0.00167 per month (which corresponds to an annual rate of 2\% - again, change the number to what makes sense for your chosen sample period). Recall, we need the risk free rate to be smaller than the average return on the global minimum variance portfolio in order to get a nice graph.In the tangency portfolio, are any of the negative weights? Compute the expected return, variance and standard deviation of the tangency portfolio. Compare the Sharpe ratio of the tangency portfolio with those of the individual assets.**
+
+```{r}
+#Compute Tangency Portfolio
+tan_port = tangency.portfolio(muhat.vals, cov.mat, 0.00167)
+tan_port
+cat("This portfolio has a vairance of", tan_port[3]$sd^2, "\n")
+cat("This portfolio has a sharpe ratio of", 
+    (tan_port[2]$er - 0.00167)/tan_port[3]$sd)
+```
+
+Will compare after individual share ratio is calculated from my teammates.
+
+**Annualize the the monthly ER and SD of the tangency portfolio by multiplying the ER by 12 and the SD by the square root of 12. Compute the annual Sharpe ratio from these values. Briefly comment.**
+
+```{r}
+tan_mu_yr = tan_port[2]$er * 12
+tan_sd_yr = tan_port[3]$sd * sqrt(12)
+tan_SR_yr = (tan_mu_yr - 0.02)/tan_sd_yr
+cat("The annual expected return of tangency portolio is", tan_mu_yr, "\n")
+cat("The annual standard deivation of tangency portolio is", tan_sd_yr, "\n")
+cat("The sharpe ratio in annual parameter of tangency portolio is", tan_SR_yr)
+```
+
+The annual sharpe ratio is higher than both the annual expected reutn and standard deviation.
+
+**Show the tangency portfolio as well as combinations of T-bills and the tangency portfolio on a plot with the efficient frontier of risky assets.**
+
+**Using the IntroCompFinR funciton globalMin.portfolio() with optional argument shorts=FALSE, compute the global minimum variance portfolio with the added restriction that short-sales are not allowed, and calculate the expected return and SD of this portfolio.**
+
+```{r}
+gm_port_ns = globalMin.portfolio(muhat.vals, cov.mat, shorts = FALSE)
+gm_port_ns
+```
+
+**Annualize the the monthly estimates by multiplying the ER by 12 and the SD by the square root of 12. Compute the annual Sharpe ratio from these values. Compare this portfolio with the global minimum variance portfolio that allows short-sales.** 
+
+```{r}
+mu_gm_ns_yr = gm_port_ns[2]$er * 12
+sd_gm_ns_yr = gm_port_ns[3]$sd * sqrt(12)
+SR_gm_ns_yr = (mu_gm_ns_yr - 0.02)/sd_gm_ns_yr
+cat("The annual expected return of this portolio is", mu_gm_ns_yr, "\n")
+cat("The annual standard deivation of this portolio is", sd_gm_ns_yr, "\n")
+cat("The sharpe ratio in annual parameter of this portolio is", SR_gm_ns_yr)
+```
+
+The annual expected return of global minimum portfolio with short sell is higher than that of the portfolio without short sell. The annual standard deviation of the portfolio with short sell is lower than that of the portfolio without short sell. Lastly, the annual sharpe ratio of the portfolio with short sell is higher than that of the portfolio without short selling.
+
+**Assume that you have $\$100,000$ to invest for a year starting at January 31. For the global minimum variance portfolio with short-sales not allowed, determine the $1\%$ and $5\%$ value-at-risk of the $100,000 investment over a one month investment horizon. Compare your results with those for the global minimum variance that allows short sales.**
+
+```{r}
+W = 100000
+var_one_gm_ns = W * qnorm(p = 0.01, mean = gm_port_ns[2]$er, 
+                          sd = gm_port_ns[3]$sd)
+var_five_gm_ns = W * qnorm(p = 0.05, mean = gm_port_ns[2]$er, 
+                           sd = gm_port_ns[3]$sd)
+cat("The 1% normal value-at-risk of given investment over one month is", 
+    abs(var_one_gm_ns), "\n")
+cat("The 5% normal value-at-risk of given investment over one month is", 
+    abs(var_five_gm_ns))
+```
+
+Comparing with those parameters for global minimum variance portfolio with and without short sell, we found those for the portfolio without short sell have higher risk than those for the portfolio with short sell.
+
+**Using the IntroCompFinR function efficient.frontier() with the optional argument shorts=FALSE, compute and plot the efficient portfolio frontier this time not allowing for short sales, for the 5 ETFs.Create a plot (based on monthly frequency) with portfolio expected return on the vertical axis and portfolio standard deviation on the horizontal axis showing the efficient portfolios. Indicate the location of the global minimum variance portfolio (with short sales allowed) as well as the locations of your 5 assets and the equally weighted portfolio.**
+
+```{r}
+#Compute efficient portfolio frontier using monthly return data
+all_eff_ns = efficient.frontier(muhat.vals, cov.mat, shorts = FALSE)
+all_eff_ns
+
+#plot the frontier with prevous portfolios
+plot(all_eff_ns[3]$sd, all_eff_ns[2]$er, type="b", ylim=c(0, 0.01), xlim=c(0.04, 0.066),
+pch=16, col="darkgreen", cex = 1, ylab=expression(mu[p]), xlab=expression(sigma[p]))
+text(median(all_eff_ns[3]$sd-0.0060), median(all_eff_ns[2]$er),
+labels="Efficient Frontier without short sell", pos=1, cex = 0.8, col="darkgreen")
+points(gm_port_ns[3]$sd, gm_port_ns[2]$er, cex=1, col="red", cex.lab=1, pch=16)
+text(gm_port_ns[3]$sd, gm_port_ns[2]$er,
+labels="GM without Short Sell", pos=2, cex=0.8, col="red")
+points(eqw_port[3]$sd, eqw_port[2]$er, cex=1, col="blue", cex.lab=1, pch=16)
+text(eqw_port[3]$sd, eqw_port[2]$er,
+labels="Equal Weight", pos=4, cex=0.8, col="blue")
+points(sd.vals[1], muhat.vals[1], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[2], muhat.vals[2], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[3], muhat.vals[3], cex=1, col="black", cex.lab=1, pch=16)
+points(sd.vals[1], muhat.vals[1], cex=1, col="black", cex.lab=1, pch=16)
+text(sd.vals[1], muhat.vals[1],
+labels="EWS", pos=4, cex=0.8, col="black")
+text(sd.vals[2], muhat.vals[2],
+labels="EWY", pos=4, cex=0.8, col="black")
+text(sd.vals[3], muhat.vals[3],
+labels="EWH", pos=4, cex=0.8, col="black")
+text(sd.vals[4], muhat.vals[4],
+labels="EWT", pos=4, cex=0.8, col="black")
+```
+
+**Compare the no short sale frontier with the frontier allowing short sales (plot them on the same graph). The no short sales frontier should be "inside" the frontier allowing for short sales.**
+
+```{r}
+plot(all_eff_ns[3]$sd, all_eff_ns[2]$er, type="b", ylim=c(0, 0.01), xlim=c(0.04, 0.06),
+pch=16, col="green", cex = 1, ylab=expression(mu[p]), xlab=expression(sigma[p]))
+text(median(all_eff_ns[3]$sd+0.0041), median(all_eff_ns[2]$er),
+labels="Efficient Frontier without short sell", pos=1, cex = 0.8, col="green")
+points(all_eff[3]$sd, all_eff[2]$er, type="b", ylim=c(0, 0.011), xlim=c(0.044, 0.066),
+pch=16, col="darkgreen", cex = 1, ylab=expression(mu[p]), xlab=expression(sigma[p]))
+text(median(all_eff[3]$sd-0.004), median(all_eff[2]$er),
+labels="Efficient Frontier with short sell", pos=1, cex = 0.8, col="darkgreen")
+```
+
+**Consider a portfolio with a target volatility of 0.02 or 2% per month (change this target if it doesn't make sense for your assets). What is the approximate cost in expected return of investing in a no short sale efficient portfolio versus a short sale efficient portfolio?**
+
+```{r}
+#Eff Port without ss
+eff_eqwmu_ns = efficient.portfolio(muhat.vals, cov.mat, eqw_port[2]$er, shorts = FALSE)
+
+#Cost for without short sell
+cost_ns_x = 0.02 / eff_eqwmu_ns[3]$sd
+cost_ns = cost_ns_x * eff_eqwmu_ns[2]$er
+#Cost for with short sell
+cost_x = 0.02 / eff_eqwmu[3]$sd
+cost = cost_x * eff_eqwmu[2]$er
+
+cat("If investing 100000, the approximate cost in 
+expected return of investing in a no short sell environment is", W * cost_ns,
+", while in a short sell environment, it is", W * cost)
+```
+
+**Using a monthly risk free rate equal to 0.00167 per month and the estimated means, variances and covariances compute the tangency portfolio imposing the additional restriction that short-sales are not allowed. Compute the expected return, variance and standard deviation of the tangency portfolio. Give the value of Sharpe's slope for the no-short sales tangency portfolio.**
+
+**Annualize the the monthly ER and SD of the tangency portfolio by multiplying the ER by 12 and the SD by the square root of 12. Compute the annual Sharpe ratio from these values. Briefly comment.**
+
+## Risk Budgeting
+
+**For the equally weighted portfolio, create a volatility risk report based on an investment of $100,000. Your risk report should be a table with columns for the assets, dollars invested in each asset, allocation weights, MCR, CR, PCR, asset correlation with portfolio, and asset beta with respect to the portfolio. Comment on the risk attribution of the portfolio. Does the risk attribution match the asset allocation? In other words, is there equal risk allocation in the portfolio? Which asset contributes most to the portfolio risk and which asset contributes least?**
+
+
+
+## Asset Allocation
+
+**Suppose you wanted to achieve a target expected return of 6% per year (which corresponds to an expected return of 0.5% per month. ** Choose your own sensible target for your portfolio here** ) using only the 5 ETFs and no short sales. What is the efficient portfolio that achieves this target return? How much is invested in each of the Vanguard ETFs in this efficient portfolio?**
+```{r}
+target_return <- 0.005
+monthly_mu <- musd_yr[1,]/12
+opt_port <- efficient.portfolio(monthly_mu, cov.mat, target_return, shorts = FALSE)
+port_weight <- data.frame(Asset = colnames(projectReturns), Weight = opt_port$weights)
+port_weight
+
+```
+
+
+**Compute the monthly SD on this efficient portfolio, as well as the monthly 1% and 5% value-at-risk based on an initial $100,000 investment.**
+```{r}
+monthly_sd <- musd_yr [2,]/12
+monthly_sd
+VaR_1 <- W * (target_return - qnorm(0.99) * monthly_sd)
+VaR_5 <- W * (target_return - qnorm(0.95) * monthly_sd)
+VaR_1
+VaR_5
+
+```
+
+
+**Suppose you wanted to achieve a target expected return of 6% per year (which corresponds to an expected return of 0.5% per month) using the 5 ETFs and the risk free asset (with monthly return 0.00167), with no short sales of the risky assets. What is the efficient portfolio that achieves this target return? How much is invested in each of the Vanguard ETFs and the risk free asset in this efficient portfolio?**
+```{r}
+monthly_rf <- 0.00167
+excess_mu <- monthly_mu - monthly_rf
+port_rf <- efficient.portfolio(excess_mu, cov.mat, target_return - monthly_rf, shorts = FALSE)
+weight_risky <- (target_return - monthly_rf) / (t(port_rf$weights) %*% monthly_mu)
+weight_rf <- 1 - weight_risky
+port_rf_weight <- data.frame(Asset = c(colnames(projectReturns), "Risk-Free"), Weight = c(weight_risky * port_rf$weights, weight_rf))
+port_rf_weight
+```
+
+
+\newpage  BELOW are SAMPLE REPORTS you should aim to produce and summarize, but in your in-class presentation, focus on the key lessons and insights with selected tables and figures only
+
+# SAMPLE Executive Summary
+
+The purpose of the analysis to study the statistical behavior of five Vanguard ETFs (4 stock funds and 1 bond fund) and to implement mean-variance portfolio theory to create specific asset allocations among the funds. The data used for the project consists of end-of-month adjusted closing price data from `finance.yahoo.com` over the period Dec 2013 through Dec 2023. The statistical analysis is used to uncover stylized facts of asset behavior and to confirm the application of the GWN model. The estimates of the GWN model are inputs to the mean-variance portfolio theory.
+
+## Stylized Facts
+
+Using graphical and numerical descriptive statistics the following stylized facts of simple monthly returns were observed:
+
+* The best performing asset in terms of 10 year growth is XXX gaining about ##%... 
+The best performing asset in terms of 10 year growth is EWT gaining about 116.69%
+
+* Over the full sample, the normal distribution (GWN model) is/isn't a plausible distribution for all returns
+Over the full sample, the normal distribution (GWN model) isn't a plausible distribution for all returns
+
+* Returns are correlated/uncorrelated over time. 
+Returns are uncorrelated over time. 
+
+* XXX haS the highest monthly mean returns at ##\%. YYY have lower means returns around ##\%. All of the stock ETF have similar monthly volatility around ##\%. The bond ETF has the lowest volatility at ##\%
+EWT has the highest monthly mean returns at 0.7952% per month. EWY and EWH have lower means returns around 0.1598% and 0.1172% per month. EWS has the lowest mean returns at 0.0551% per month. EWS, EWT, and EWH have similar monthly volatility around 5.423% per month (mean volatility). The EWS has the lowest volatility at 5.26% per month and the EWY has the highest volatility at 6.46% per month.
+
+* Mean returns and volatilities are/are not estimated very precisely ...etc. 
+Mean returns and volatilities are estimated with moderate precision with EWY accounts for highest standard error in both mean returns and volatilities and EWS has the lowest in both.
+
+* From a return-risk perspective, comment on the Sharpe ratios, are they estimated precisely? 
+The selected funds all present low Sharpe ratio suggesting poor return to risk performance. EWT has the highest overall Sharpe ratio at 0.1454 and EWS has the lowest Sharpe ratio at 0.0105. The standard error are relatively low with SE/Sharpe Ratio rate at 4.56% ~ 4.57% which suggests that the estimations are precise with minor uncertainty.
+
+* How correlated are the funds? Which one(s) may be more helpful for diversification?
+Overall, the funds perform moderate to high positive correlations. However, EWH seems to have relatively lower correlation and therefore it's more helpful for diversification.
+
+* How about their Normal 5\% and 1\% VaR values? Are the Normal VaR is estimated reasonably precisely? Are the Normal VaR and Empirical VaR values similar, supporting the normal distribution?
+The normal 5% VaR values range from -3030 to -3840 and normal 1% VaR values range from -1996 to -2568. The normal VaR is estimated reasonably precisely due to its small difference from empirical VaR, with empirical VaR slightly smaller than normal VaR. Since there's small differences the returns may not be perfectly normally distributed.
+
+* Do returns appear to be covariance stationary over the full sample? Do rolling estimates of means show evidence of changing means?  how about rolling volatility estimates?
+The returns appear to be covaraince stationary over the full sample.
+
+## Portfolio Theory  
+
+Using the GWN model, the estimated mean vector and covariance matrix of returns were used as inputs to compute a variety of mean-variance efficient portfolios. For retirement portfolios the only feasible portfolios are portfolios that do not allow short sales. A summary of the portfolio results are in the table below
+
+* provide a summary table
+
+* The equal weight portfolio is well inside the efficient frontier of risky assets and has a SR . The risk is spread evenly across the stock ETFs and XXX contributes only ##\% of portfolio risk.
+
+* The unrestricted global minimum variance portfolio is a long-short portfolio with long positions in XXX and short positions in ...  The no-shorts global minimum variance portfolio is ... 
+
+* The efficient frontier allowing for short sales has the classic Markowitz bullet shape. The only fund close to the frontier is XXX, ...etc. The no-shorts efficient frontier lies inside and to the right of the unrestricted frontier and the highest possible target expected return is the mean of XXX.
+
+* The tangency portfolio allowing shorts is a strange long-short portfolio with a large long leveraged position in XXX (wt 2.1) and a large short position in YYY (wt -1.83). The no-short tangency portfolio is 100\% in XXX.   
+
+## Asset Allocation
+
+* The no-shorts efficient portfolio of risky assets that has a target expected return of #\% per year consists of US dividend growth stocks and Municipal bonds: ##\% in XXX and ##\% in YYY. 
+The no-shorts efficient portfolio of risky assets that has a target expected return of 6% per year consists of Exchange-traded funds in Asia Pacific region: EWS 24.4%, EWY 0%, EWT 58.7%, EWH 16.9%.
+
+```{r}
+port_weight
+```
+
+* The no-shorts efficient portfolio of risky assets and T-bills is similar: ##% XXX and ##\% T-Bills. 
+The no-shorts efficient portfolio of risky assets and T-bills is similar: 39.1% EWT and 33.4% T-Bills. 
+
+```{r}
+port_rf_weight
+```
+
+## Longer-horizon investment
+
+* We also consider one-year investment horizon using the same assets.  Report how your results using annual data differ from above qualitatively. Any insights and lessons?
