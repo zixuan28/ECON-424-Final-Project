@@ -1,0 +1,376 @@
+---
+title: "Econ 424 Project Group 7"
+output:
+  pdf_document: default
+  html_notebook: default
+  html_document:
+  df_print: paged
+---
+
+```{r, echo = FALSE}
+options(digits=3, width=70)
+# load packages
+suppressPackageStartupMessages(library(reshape2))
+suppressPackageStartupMessages(library(IntroCompFinR))
+suppressPackageStartupMessages(library(PerformanceAnalytics))
+suppressPackageStartupMessages(library(quantmod))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(corrplot))
+suppressPackageStartupMessages(library(xtable))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(gridExtra))
+
+resetPar = par()
+```
+
+
+# Data
+
+```{r, echo=FALSE}
+# retrieve data for questions
+last.date = as.Date("2023-12-31")
+# last.date = Sys.Date()
+first.date = last.date - years(10)
+project.symbols = c("EWS","EWY","EWT","EWH")
+project.prices <- 
+  getSymbols(project.symbols, src = 'yahoo', 
+             from = as.character(first.date), 
+             to = as.character(last.date),
+             auto.assign = TRUE, 
+             warnings = FALSE) %>% 
+  map(~Ad(get(.))) %>% 
+  reduce(merge) %>%
+  `colnames<-`(project.symbols)
+projectPrices = to.monthly(project.prices, OHLC=FALSE)  # Group 7 you should continue to use daily data and skip this
+```
+
+```{r, echo=FALSE}
+# calculate simple returns
+projectReturns = na.omit(Return.calculate(projectPrices, method = "discrete"))
+ret.mat = coredata(projectReturns)
+```
+
+## Historical performance
+
+```{r, echo=FALSE}
+chart.CumReturns(projectReturns, main="Example data",
+                 wealth.index = TRUE, legend.loc = "topleft")
+```
+
+* Starbucks performed best over the full sample but Microsoft was best before the dot-com bust
+
+## Estimated inputs to portfolio theory: full sample
+
+```{r}
+nobs = nrow(projectReturns)
+muhat.vals = colMeans(projectReturns)
+sigmahat.vals = apply(projectReturns,2,sd)
+cov.mat = var(projectReturns)
+cor.mat = cor(projectReturns)
+```
+
+Full sample mean values
+
+```{r}
+muhat.vals
+```
+
+Full sample volatility values
+
+```{r}
+sigmahat.vals
+```
+
+Full sample correlation matrix
+
+```{r}
+cor.mat
+```
+
+## Risk-return tradeoff: full sample
+
+```{r}
+plot(sigmahat.vals, muhat.vals,  
+     ylim=c(0, 0.02), xlim=c(0, 0.1), 
+     ylab=expression(mu[p]), xlab=expression(sigma[p]), 
+     pch=16, col="blue", cex=1, cex.lab=1)     
+text(sigmahat.vals, muhat.vals, labels=names(muhat.vals), pos=1, cex = 1.1)
+```
+
+* Starbucks is best, followed by Microsoft and EWYstrom
+
+## Risk-return tradeoff: by year
+
+```{r, echo=FALSE}
+muhatByYear = rollapply(projectReturns, width=12, by=12, FUN=mean, align="right")
+muhatByYear = na.omit(muhatByYear)
+
+sigmahatByYear = rollapply(projectReturns, width=12, by=12, FUN=sd, align="right")
+sigmahatByYear = na.omit(sigmahatByYear)
+
+plot(sigmahat.vals, muhat.vals,  
+     ylim=c(-0.02, 0.06), xlim=c(0, 0.20), 
+     ylab=expression(mu[p]), xlab=expression(sigma[p]), 
+     pch=16, col="blue", cex=1.1, cex.lab=1)     
+text(sigmahat.vals, muhat.vals, labels=names(muhat.vals), pos=1, cex = 1.1)
+
+for (i in 1:nrow(muhatByYear)) {
+  points(coredata(sigmahatByYear[i, ]), coredata(muhatByYear[i, ]), pch=16, col=i)
+  text(coredata(sigmahatByYear[i, ]), coredata(muhatByYear[i, ]), labels=names(muhat.vals), 
+         pos=4, cex = 0.5)
+}
+
+```
+
+* Big blue circles are full sample estimates
+* Small colored circles are values for a particular year
+* Risk return tradeoff changes drastically over time!
+
+## 24-month rolling means and volatilities
+
+Use **zoo** function `rollapply()` to compute 24-month rolling means and volatilities
+
+```{r}
+roll.muhat.EWS = rollapply(projectReturns[,"EWS"], width=24,
+                       FUN=mean, align="right")
+roll.sigmahat.EWS = rollapply(projectReturns[,"EWS"],width=24,
+                          FUN=sd, align="right")
+roll.muhat.EWY = rollapply(projectReturns[,"EWY"], width=24,
+                            FUN=mean, align="right")
+roll.sigmahat.EWY = rollapply(projectReturns[,"EWY"],width=24,
+                               FUN=sd, align="right")
+roll.muhat.EWT = rollapply(projectReturns[,"EWT"], width=24,
+                            FUN=mean, align="right")
+roll.sigmahat.EWT = rollapply(projectReturns[,"EWT"],width=24,
+                               FUN=sd, align="right")
+roll.muhat.EWH = rollapply(projectReturns[,"EWH"], width=24,
+                            FUN=mean, align="right")
+roll.sigmahat.EWH = rollapply(projectReturns[,"EWH"],width=24,
+                               FUN=sd, align="right")
+```
+
+## 24-month rolling means and volatilities
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+# EWS
+  plot.zoo(merge(roll.muhat.EWS, roll.sigmahat.EWS, projectReturns[,"EWS"]), 
+          plot.type="single",
+          main="EWS",ylab="returns",
+          lwd=2, col=c("blue","orange","black"))
+  abline(h=0)
+
+ 
+# EWY
+  plot.zoo(merge(roll.muhat.EWY, roll.sigmahat.EWY, projectReturns[,"EWY"]), 
+          plot.type="single",
+          main="EWY",ylab="returns",
+          lwd=2, col=c("blue","orange","black"))
+  abline(h=0)  
+  
+# EWT
+  plot.zoo(merge(roll.muhat.EWT,roll.sigmahat.EWT, projectReturns[,"EWT"]), 
+          plot.type="single",
+          main="EWT",ylab="returns",
+          lwd=2, col=c("blue","orange","black"))
+  abline(h=0)
+  
+# EWH
+  plot.zoo(merge(roll.muhat.EWH,roll.sigmahat.EWH, projectReturns[,"EWH"]), plot.type="single",
+       main="EWH",ylab="returns",
+       lwd=2, col=c("blue","orange","black"))
+  abline(h=0)
+  
+# blank
+  plot.zoo(roll.muhat.EWS, type="n", ylab="")
+  legend(x="center",legend=c("Rolling mean","Rolling sd", "Monthly returns"),
+         lwd=2, col=c("blue","orange","black"))
+par(mfrow=c(1,1))
+
+```
+
+## 24-month rolling correlations
+
+Here there are three pair-wise correlations: EWS-EWY, EWS-EWT, and EWY-EWT. The following function extracts these pair-wise correlations from the estimated correlation matrix.
+
+```{r}
+roll.cor = function(x) {
+  cor.hat = cor(x, use = "pairwise.complete.obs")  
+  cor.vals = cor.hat[lower.tri(cor.hat, diag = FALSE)]
+  
+  # Generate proper names for each pair
+  tickers <- colnames(x)
+  pair_names <- combn(tickers, 2, FUN = function(pair) paste(pair, collapse = "."))
+  names(cor.vals) <- pair_names
+  
+  return(cor.vals)
+}
+
+```
+
+Compute all pair-wise 24-month rolling correlations using `rollapply()`
+
+```{r}
+roll.cor.vals = rollapply(projectReturns, width=24,
+                          by.column=FALSE,
+                          FUN=roll.cor, 
+                          align="right")
+```
+
+
+
+## 24-month rolling correlations
+
+```{r}
+my.panel <- function(...) {
+  lines(...)
+  abline(h=0)
+}
+
+colnames(roll.cor.vals) <- colnames(roll.cor.vals, do.NULL = FALSE, prefix = "Pair")
+
+# Re-run the plotting function
+plot.zoo(roll.cor.vals, panel=my.panel, main="Rolling Pairwise Correlations",
+     lwd=2, col="blue", ylim=c(-0.25,1))
+
+```
+
+* Rolling correlations change over time but not too much
+
+## Global minimum variance portfolio: full sample
+
+```{r}
+gmin.full = globalMin.portfolio(er=muhat.vals,cov.mat=cov.mat)
+gmin.full
+```
+
+* Full sample global minimum variance portfolio is roughly equally weighted
+
+## 24-month rolling global minimum variance portfolio
+
+Now we compute the global minimum variance portfolio over 24-month rolling window. First, we need to write a function to return the global minimum variance portfolio weights, means and volatilities for each rolling window. We use the **IntroCompfinR** function `globalMin.portfolio()` to do the calculations.
+
+```{r}
+# function to compute rolling global minimum variance portfolios
+rollGmin = function(x) {
+	mu.hat = colMeans(x)
+	cov.hat = var(x)
+	gmin = globalMin.portfolio(er=mu.hat,cov.mat=cov.hat)
+	ans = c(gmin$er,gmin$sd,gmin$weights)
+	names(ans)[1:2] = c("er","sd")
+	return(ans)
+}
+```
+
+Now use `rollapply()` with `rollGmin()` to do the calculations.
+
+```{r}
+# use rollapply() to compute rolling portfolios
+roll.gmin = rollapply(projectReturns, width=24,
+                      by.column=FALSE,align="right",
+                      FUN=rollGmin)
+
+# show first three non NA values
+na.omit(roll.gmin)[1:3, ]
+```
+
+
+## 24-month rolling global minimum variance portfolio weights
+
+```{r, echo=FALSE}
+plot.zoo(roll.gmin[,3:6], main="",
+         plot.type="single", col=1:4, lwd=3, ylab="weight")    
+abline(h=0)
+legend(x="bottomleft", legend=colnames(roll.gmin[,3:6]),
+       lty=rep(1,4), col=1:4, lwd=3)
+```
+
+* Rolling portfolio weights change a lot over time
+* Look at how the weights in Microsoft and Starbucks change over time
+
+## 24-month rolling global minimum variance portfolio weights
+
+```{r, echo=FALSE}
+chart.StackedBar(na.omit(roll.gmin[,3:6]))
+```
+
+* Stacked bar chart created using the PerformanceAnalytics function `chart.StackedBar()` shows changing weights more clearly
+
+## 24-month rolling global minimum variance portfolio means and volatilities
+
+```{r, echo=FALSE}
+plot.zoo(roll.gmin[,1:2],plot.type="single",ylab="percent",
+         main="",
+         col=c("black","blue"),lwd=3)
+abline(h=0)
+legend(x="topleft",legend=c("Rolling mean","Rolling sd"),
+       lty=rep(1,2),col=c("black","blue"),lwd=3)
+```
+
+* Notice how mean and volatility move in opposite directions: when mean goes down vol goes up!
+
+## Efficient portfolio with target return $\mu_p = 0.03$ : Full Sample
+
+```{r}
+eport.03 = efficient.portfolio(er=muhat.vals,cov.mat=cov.mat,
+                                target.return=0.03)
+eport.03
+
+```
+
+Full sample portfolio is a long-short portfol with long positions in Microsoft and Starbucks.
+
+## 24-month rolling efficient portfolios with target return 3%
+
+Now we compute the efficient portfolio with target return 3% over 24-month rolling window. First, we need to write a function to return the efficient portfolio weights, means and volatilities for each rolling window. We use the **IntroCompfinR** function `efficient.portfolio()` to do the calculations.
+
+```{r}
+# function to compute rolling efficient portfolios
+rollefficient = function(x,target=0.03) {
+	mu.hat = colMeans(x)
+	cov.hat = var(x)
+	eport = efficient.portfolio(er=mu.hat,
+                              cov.mat=cov.hat,
+	                            target.return=target)
+	ans = c(eport$er,eport$sd,eport$weights)
+	names(ans)[1:2] = c("er","sd")
+	return(ans)
+}
+```
+
+Now use `rollapply()` with `rollefficient()` to do the calculations.
+
+```{r}
+# use rollapply() to compute rolling portfolios
+roll.eport = rollapply(projectReturns, width=24,
+                       by.column=F,align="right",
+                       FUN=rollefficient)
+```
+
+## 24-month rolling efficient portfolios
+
+```{r, echo=FALSE}
+plot.zoo(roll.eport[,3:6],main="",
+     plot.type="single", ylab="weight", col=1:4,lwd=3)
+abline(h=0)
+legend(x="bottomleft",legend=colnames(projectReturns),
+       lty=rep(1,4),col=1:4,lwd=3)
+```
+## 24-month rolling efficient portfolios
+
+```{r, echo=FALSE}
+chart.StackedBar(na.omit(roll.eport[,3:6]))
+```
+## 24-month rolling global minimum variance portfolio means and volatilities
+
+```{r, echo=FALSE}
+plot.zoo(roll.eport[,1:2], plot.type="single", ylab="percent",
+         main="", ylim=c(0, 0.35),
+         col=c("black","blue"),lwd=3)
+abline(h=0)
+legend(x="topleft",legend=c("Target er=0.03","Rolling sd"),
+       lty=rep(1,2),col=c("black","blue"),lwd=3)
+
+```
