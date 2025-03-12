@@ -1302,3 +1302,18 @@ port_rf_weight
 ## Longer-horizon investment
 
 * We also consider one-year investment horizon using the same assets.  Report how your results using annual data differ from above qualitatively. Any insights and lessons?
+
+```{r}
+annual_returns <- colMeans(projectReturns, na.rm = TRUE) * 12
+annual_sd <- apply(projectReturns, 2, sd, na.rm = TRUE) * sqrt(12)
+risk.free.ann <- 0.00167 * 12
+annual_sharpe_ratios <- (annual_returns - risk.free.ann) / annual_sd
+
+annual_table <- data.frame(
+  Asset = colnames(projectReturns),
+  Annual_Return = round(annual_returns, 4),
+  Annual_SD = round(annual_sd, 4),
+  Annual_Sharpe = round(annual_sharpe_ratios, 4)
+)
+annual_table
+```
