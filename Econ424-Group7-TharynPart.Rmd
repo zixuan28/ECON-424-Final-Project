@@ -1,10 +1,10 @@
 ---
 title: "Econ 424 Project Group 7"
 output:
+  pdf_document: default
+  html_notebook: default
   html_document:
     df_print: paged
-  html_notebook: default
-  pdf_document: default
 ---
 
 ```{r, echo = FALSE}
@@ -66,12 +66,14 @@ project.prices <-
   map(~Ad(get(.))) %>% 
   reduce(merge) %>%
   `colnames<-`(project.symbols)
+projectPrices.daily = project.prices
 projectPrices = to.monthly(project.prices, OHLC=FALSE)  # Group 7 you should continue to use daily data and skip this
 ```
 
 ```{r, echo=FALSE}
 # calculate simple returns
 projectReturns = na.omit(Return.calculate(projectPrices, method = "discrete"))
+projectReturns.daily = na.omit(Return.calculate(projectPrices.daily, method = "discrete"))
 ret.mat = coredata(projectReturns)
 ```
 
@@ -107,7 +109,7 @@ grid.arrange(
   autoplot(projectPrices[, "EWY"]),
   autoplot(projectPrices[, "EWT"]),
   autoplot(projectPrices[, "EWH"]),
-  nrow=3
+  nrow=2
 )
 ```
 
@@ -116,11 +118,19 @@ grid.arrange(
 **Q: Give a plot showing the growth of $1 in each of the funds over the five year period (recall, this is called an "equity curve"). Which fund gives the highest future value? Are you surprised?**
 
 ```{r Equity-Curve}
-project.gret = 1+projectReturns
+smpl = "2018::2023"
+project.gret.daily = 1+projectReturns.daily[smpl]
+equity.daily = cumprod(project.gret.daily)
+colors = c("blue", "red", "green", "orange")
+
+matplot(equity.daily, type="l", col=colors, lwd=2, lty=1, xlab="Days", ylab="Equity Value", main="Simulated 5 Year Equity Curve")
+legend("topleft", legend = c(project.symbols), col = colors, lty=1, lwd=2)
+
+project.gret = 1+projectReturns[smpl]
 equity = cumprod(project.gret)
 colors = c("blue", "red", "green", "orange")
 
-matplot(equity, type="l", col=colors, lwd=2, lty=1, xlab="Days", ylab="Equity Value", main="Simulated Equity Curve")
+matplot(equity, type="l", col=colors, lwd=2, lty=1, xlab="Months", ylab="Equity Value", main="Simulated 5 Year Equity Curve")
 legend("topleft", legend = c(project.symbols), col = colors, lty=1, lwd=2)
 ```
 
@@ -267,10 +277,10 @@ computeSEconfintSharpe = function(x, risk.free) {
   return(ans)
 }
 set.seed(123)
-Sharpe.boot.EWS = computeSEconfintSharpe(ret.mat[, "EWS", drop=FALSE], risk.free=rf)
-Sharpe.boot.EWY = computeSEconfintSharpe(ret.mat[, "EWY", drop=FALSE], risk.free=rf)
-Sharpe.boot.EWT = computeSEconfintSharpe(ret.mat[, "EWT", drop=FALSE], risk.free=rf)
-Sharpe.boot.EWH = computeSEconfintSharpe(ret.mat[, "EWH", drop=FALSE], risk.free=rf)
+Sharpe.boot.EWS = computeSEconfintSharpe(projectReturns[, "EWS", drop=FALSE], risk.free)
+Sharpe.boot.EWY = computeSEconfintSharpe(projectReturns[, "EWY", drop=FALSE], risk.free)
+Sharpe.boot.EWT = computeSEconfintSharpe(projectReturns[, "EWT", drop=FALSE], risk.free)
+Sharpe.boot.EWH = computeSEconfintSharpe(projectReturns[, "EWH", drop=FALSE], risk.free)
 
 Sharpe.mat = rbind(Sharpe.boot.EWS,
                 Sharpe.boot.EWY,
@@ -279,9 +289,9 @@ Sharpe.mat = rbind(Sharpe.boot.EWS,
 rownames(Sharpe.mat) = colnames(projectReturns)
 kable(Sharpe.mat)
 ```
-## TO DO STILL
+
 **Q: Are the Sharpe slopes estimated precisely?**
-The sharpe slopes estimated do not seem to be precise as all of the standard errors are very large. Only Taiwan's standard error is smaller than the estimated sharpe ratio, but only by 0.004.
+The sharpe slopes estimated do not seem to be precise as all of the standard errors are very large. Only Taiwan's standard error is smaller than the estimated sharpe ratio, but is still large.
 
 ** Convert the monthly sample means into annual estimates by multiplying by 12 and convert the monthly sample SDs into annual estimates by multiplying by the square root of 12. Comment on the values of these annual numbers. Using these values, compute annualized Sharpe ratios. Are the asset rankings the same as with the monthly Sharpe ratios?**
 
@@ -300,7 +310,7 @@ ann.sharpe = (muhat.vals_yr - rf.ann)/sd.vals_yr
 project.sharpe
 ann.sharpe
 ```
-The asset's sharpe ratios do not have the same ranking as the monthly sharpe ratios
+The asset's sharpe ratios do not kkvixhave the same ranking as the monthly sharpe ratios
 
 ** Assuming you get the average annual return every year for 10 years, how much would $1 grow to after 5 years? (Remember, the annual return you compute is a cc annual return).**
 ```{r 5yr-ROI}
@@ -338,6 +348,7 @@ Taiwan (EWT) and Korea (EWY) are the most correlated assets while Korea and Hong
 ```{r VaR-EstCalculations}
 ## VaR values for 1% and 5% using estimate mu and sd values
 # 5% VaR
+w0 = 100000
 quantiles.vals15 = quantiles.vals[1:2,] * w0
 quantiles.vals15
 ```
@@ -400,10 +411,10 @@ computeSEconfintVaR = function(x, p=0.05, w=100000,
   return(ans)
 }
 set.seed(123)
-VaR.boot.EWS = computeSEconfintVaR(ret.mat[, "EWS", drop=FALSE])
-VaR.boot.EWY = computeSEconfintVaR(ret.mat[, "EWY", drop=FALSE])
-VaR.boot.EWT = computeSEconfintVaR(ret.mat[, "EWT", drop=FALSE])
-VaR.boot.EWH = computeSEconfintVaR(ret.mat[, "EWH", drop=FALSE])
+VaR.boot.EWS = computeSEconfintVaR(projectReturns[, "EWS", drop=FALSE])
+VaR.boot.EWY = computeSEconfintVaR(projectReturns[, "EWY", drop=FALSE])
+VaR.boot.EWT = computeSEconfintVaR(projectReturns[, "EWT", drop=FALSE])
+VaR.boot.EWH = computeSEconfintVaR(projectReturns[, "EWH", drop=FALSE])
 
 VaR.mat = rbind(VaR.boot.EWS,
                 VaR.boot.EWY,
@@ -417,10 +428,10 @@ kable(VaR.mat)
 
 ```{r, echo=FALSE}
 set.seed(123)
-VaR.boot.EWS.01 = computeSEconfintVaR(ret.mat[, "EWS", drop=FALSE], p=0.01)
-VaR.boot.EWY.01 = computeSEconfintVaR(ret.mat[, "EWY", drop=FALSE], p=0.01)
-VaR.boot.EWT.01 = computeSEconfintVaR(ret.mat[, "EWT", drop=FALSE], p=0.01)
-VaR.boot.EWH.01 = computeSEconfintVaR(ret.mat[, "EWH", drop=FALSE], p=0.01)
+VaR.boot.EWS.01 = computeSEconfintVaR(projectReturns[, "EWS", drop=FALSE], p=0.01)
+VaR.boot.EWY.01 = computeSEconfintVaR(projectReturns[, "EWY", drop=FALSE], p=0.01)
+VaR.boot.EWT.01 = computeSEconfintVaR(projectReturns[, "EWT", drop=FALSE], p=0.01)
+VaR.boot.EWH.01 = computeSEconfintVaR(projectReturns[, "EWH", drop=FALSE], p=0.01)
 
 VaR.mat.01 = rbind(VaR.boot.EWS.01,
                 VaR.boot.EWY.01,
@@ -437,7 +448,7 @@ kable(VaR.mat.01)
 
 * The rankings are the same for the 1\% VaR values: VWO has the highest VaR at -\$11,429, and VTEB has the lowest at -\$3,468. The bootstrap standard errors are about 8-9 times smaller than the VaR estimate2.
 
-## THESE NEED TO BE REWRITTEN ##
+Unsurprisingly, EWY has the highest amount of risk for both 5% and 1% at $9940 and $13820 respectively. The lowest VaR is EWT at $7871 and $11241. The bootstrap SE values are roughly 10 times smaller than the VaR values and the confidence intervals are not too wide, but still likely wider than what would be prefered.
 
 
 **Repeat the VaR analysis (but skip the bootstrapping and the annualized VaR calculation), but this time use the empirical 1% and 5% quantiles of the return distributions (which do not assume a normal distribution - this method is often called historical simulation). How different are the results from those based on the normal distribution?**
@@ -446,14 +457,14 @@ kable(VaR.mat.01)
 
 
 ```{r, echo=FALSE}
-VaR.normal.05 = Value.at.Risk(ret.mat, p=0.05, 
+VaR.normal.05 = Value.at.Risk(projectReturns, p=0.05, 
                               method="normal",
                               return.type="cc")
-VaR.normal.01 = Value.at.Risk(ret.mat, p=0.01)
-VaR.empirical.05 = Value.at.Risk(ret.mat, p=0.05, 
+VaR.normal.01 = Value.at.Risk(projectReturns, p=0.01)
+VaR.empirical.05 = Value.at.Risk(projectReturns, p=0.05, 
                                  method="empirical",
                                  return.type="cc")
-VaR.empirical.01 = Value.at.Risk(ret.mat, p=0.01, 
+VaR.empirical.01 = Value.at.Risk(projectReturns, p=0.01, 
                                  method="empirical",
                                  return.type="cc")
 VaR.mat = cbind(VaR.normal.05, VaR.empirical.05, VaR.normal.01, VaR.empirical.01)
@@ -462,8 +473,7 @@ kable(VaR.mat)
 ```
 
 * The normal and empirical VaR values are close? not close?  
-### THIS NEEDS TO BE LOOKED AT IN MORNING ###
-Why is the normal VaR different than the VaR calculated based of the estimated means and returns
+There are differences between the normal and empirical VaR values which likely indicates that a normal distribution does not accurately predict risk for an asset. For EWS the 5% normal VaR may be overestimating risk while underestimating risk for 1%. For EWY the normal model seems to underestimate risk at both levels. For EWT and EWH show that the normal distribution does not accurately show extreme losses.
 
 ## Rolling Sample Statistics
 
@@ -774,7 +784,7 @@ PORT.EQW = c(w0, NA, 1, NA, sum(CR.eqw), sum(PCR.eqw), 1, 1)
 eqw.riskreport = cbind(d.eqw, sd.vals, eqw.weights, MCR.eqw, CR.eqw, PCR.eqw, Beta.eqw, Rho.eqw)
 eqw.riskreport = rbind(eqw.riskreport, PORT.EQW)
 colnames(eqw.riskreport) = c("Dollars", "Vol", "Weight", "MCR", "CR", "PCR", "Beta", "Rho")
-eqw.riskreport
+kable(eqw.riskreport)
 ```
 For the equally weighted portfolio EWY (Korea) contributes the most risk to the portfolio while both EWS (Singapore) and EWH (Hong Kong) contribute the least. Risk is not uniformally distributed between each of the assets of the portfolio, but each of the assets remain relatively close in terms of how much risk they contribute towards the overall portfolio risk. All of the assets are highly correlated with the portfolio as a whole since each of the assets are themselves highly correlated.
 
